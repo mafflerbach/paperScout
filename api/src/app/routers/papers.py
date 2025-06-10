@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from typing import List, Optional
+from services.llm_processor import LLMProcessor
 
 from database import get_db
-from models import Paper
-from schemas import PaperCreate, PaperResponse, PaperUpdate, PaperBatchInput
+from models import Paper, PaperSection
+from schemas import PaperCreate, PaperResponse, PaperUpdate, PaperBatchInput, PaperSectionResponse
 
 router = APIRouter()
 
@@ -117,6 +118,30 @@ async def get_paper(paper_id: int, db: AsyncSession = Depends(get_db)):
     return paper
 
 
+@router.get("/{paper_id}/sections", response_model=List[PaperSectionResponse])
+async def get_paper_sections(paper_id: int, db: AsyncSession = Depends(get_db)):
+    """Get all sections and summaries for a specific paper"""
+    # Check if paper exists
+    result = await db.execute(select(Paper).where(Paper.id == paper_id))
+    paper = result.scalar_one_or_none()
+    
+    if not paper:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Paper not found"
+        )
+    
+    # Get paper sections
+    sections_result = await db.execute(
+        select(PaperSection)
+        .where(PaperSection.paper_id == paper_id)
+        .order_by(PaperSection.order_index.asc().nulls_last(), PaperSection.id.asc())
+    )
+    sections = sections_result.scalars().all()
+    
+    return sections
+
+
 @router.put("/{paper_id}", response_model=PaperResponse)
 async def update_paper(
     paper_id: int,
@@ -186,3 +211,124 @@ async def get_unused_papers(
     papers = result.scalars().all()
     
     return papers
+
+
+@router.get("/{paper_id}/comprehensive-summary")
+async def get_comprehensive_summary(
+    paper_id: int,
+    style: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a comprehensive summary combining all section summaries"""
+    # Check if paper exists
+    result = await db.execute(select(Paper).where(Paper.id == paper_id))
+    paper = result.scalar_one_or_none()
+    
+    if not paper:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Paper not found"
+        )
+    
+    # Check if we already have a cached summary for this style
+    if style:
+        summary_column = f"comprehensive_summary_{style}"
+        if hasattr(paper, summary_column) and getattr(paper, summary_column):
+            return {
+                "paper_id": paper_id,
+                "title": paper.title,
+                "comprehensive_summary": getattr(paper, summary_column),
+                "style": style,
+                "cached": True
+            }
+    elif paper.comprehensive_summary:
+        return {
+            "paper_id": paper_id,
+            "title": paper.title,
+            "comprehensive_summary": paper.comprehensive_summary,
+            "style": "default",
+            "cached": True
+        }
+    
+    # Get paper sections
+    sections_result = await db.execute(
+        select(PaperSection)
+        .where(PaperSection.paper_id == paper_id)
+        .order_by(PaperSection.order_index.asc().nulls_last(), PaperSection.id.asc())
+    )
+    sections = sections_result.scalars().all()
+    
+    if not sections:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No sections found for this paper"
+        )
+    
+    # Collect summaries based on style
+    section_summaries = []
+    for section in sections:
+        if style == 'academic' and section.summary_academic:
+            section_summaries.append({
+                'type': section.section_type,
+                'summary': section.summary_academic
+            })
+        elif style == 'business' and section.summary_business:
+            section_summaries.append({
+                'type': section.section_type,
+                'summary': section.summary_business
+            })
+        elif style == 'social' and section.summary_social:
+            section_summaries.append({
+                'type': section.section_type,
+                'summary': section.summary_social
+            })
+        elif style == 'educational' and section.summary_educational:
+            section_summaries.append({
+                'type': section.section_type,
+                'summary': section.summary_educational
+            })
+        elif section.summary:  # Default to original summary if style not specified or not available
+            section_summaries.append({
+                'type': section.section_type,
+                'summary': section.summary
+            })
+    
+    if not section_summaries:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No summaries found for style: {style if style else 'default'}"
+        )
+    
+    # Use LLM to generate comprehensive summary
+    llm_processor = LLMProcessor()
+    comprehensive_summary = await llm_processor.generate_comprehensive_summary(
+        paper.title,
+        paper.abstract,
+        section_summaries
+    )
+    
+    # Save the summary in the database
+    update_values = {
+        "comprehensive_summary_updated_at": func.now()
+    }
+    
+    if style:
+        update_values[f"comprehensive_summary_{style}"] = comprehensive_summary
+    else:
+        update_values["comprehensive_summary"] = comprehensive_summary
+    
+    await db.execute(
+        update(Paper)
+        .where(Paper.id == paper_id)
+        .values(**update_values)
+    )
+    await db.commit()
+    
+    return {
+        "paper_id": paper_id,
+        "title": paper.title,
+        "comprehensive_summary": comprehensive_summary,
+        "style": style or "default",
+        "sections_included": [s['type'] for s in section_summaries],
+        "cached": False
+    }

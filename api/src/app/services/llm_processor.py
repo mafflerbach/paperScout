@@ -229,6 +229,52 @@ JSON:"""
         """Close the HTTP client"""
         await self.client.aclose()
 
+    async def generate_comprehensive_summary(
+        self,
+        title: str,
+        abstract: Optional[str],
+        section_summaries: List[Dict[str, str]]
+    ) -> str:
+        """Generate a comprehensive summary from all section summaries"""
+        try:
+            # Prepare the context
+            sections_text = "\n\n".join([
+                f"{s['type'].upper()}:\n{s['summary']}"
+                for s in section_summaries
+            ])
+            
+            prompt = f"""Please provide a comprehensive summary of this research paper based on its section summaries.
+The summary should be well-structured, cohesive, and highlight the key contributions and findings.
+
+Title: {title}
+
+Abstract:
+{abstract or 'Not available'}
+
+Section Summaries:
+{sections_text}
+
+Please synthesize a comprehensive summary that:
+1. Introduces the paper's main objective and motivation
+2. Describes the key methodological approach
+3. Highlights the most significant findings and results
+4. Concludes with the paper's main contributions and implications
+
+Keep the summary clear, concise, and focused on the most important aspects that would help a reader understand the paper's significance.
+
+Comprehensive Summary:"""
+
+            response = await self._call_llm(prompt, max_tokens=1000)
+            return response.strip()
+            
+        except Exception as e:
+            logger.error(f"Failed to generate comprehensive summary: {e}")
+            # Fallback to concatenating summaries with headers
+            return "\n\n".join([
+                f"{s['type'].upper()}:\n{s['summary']}"
+                for s in section_summaries
+            ])
+
 
 # Global service instance
 _llm_processor = None

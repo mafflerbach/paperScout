@@ -16,75 +16,382 @@
             background: #f8fafc;
         }
         
-        // Analytics calculation functions
-        function calculateTrendingTechniques() {
-            const techniqueCount = {};
-            papers.forEach(paper => {
-                if (paper.techniques && paper.processing_status === 'completed') {
-                    paper.techniques.forEach(tech => {
-                        techniqueCount[tech] = (techniqueCount[tech] || 0) + 1;
-                    });
-                }
-            });
-            
-            return Object.entries(techniqueCount)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 5)
-                .map(([name, count]) => ({ name, count }));
+        
+        .header {
+            margin-bottom: 2rem;
         }
         
-        function calculateHighValueTopics() {
-            const topicRelevance = {};
-            papers.forEach(paper => {
-                if (paper.main_topics && paper.business_relevance_score && paper.processing_status === 'completed') {
-                    paper.main_topics.forEach(topic => {
-                        if (!topicRelevance[topic]) {
-                            topicRelevance[topic] = { total: 0, count: 0 };
-                        }
-                        topicRelevance[topic].total += paper.business_relevance_score;
-                        topicRelevance[topic].count += 1;
-                    });
-                }
-            });
-            
-            return Object.entries(topicRelevance)
-                .map(([name, data]) => ({ 
-                    name, 
-                    avgRelevance: (data.total / data.count).toFixed(1),
-                    paperCount: data.count 
-                }))
-                .sort((a, b) => b.avgRelevance - a.avgRelevance)
-                .slice(0, 5);
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
         }
         
-        function calculateStrategyInsights() {
-            const completedPapers = papers.filter(p => p.processing_status === 'completed');
-            const contentCreatedPapers = papers.filter(p => p.content_created);
-            
-            // Implementation feasibility analysis
-            const feasibilityStats = {};
-            completedPapers.forEach(paper => {
-                if (paper.implementation_feasibility) {
-                    if (!feasibilityStats[paper.implementation_feasibility]) {
-                        feasibilityStats[paper.implementation_feasibility] = { total: 0, count: 0 };
-                    }
-                    feasibilityStats[paper.implementation_feasibility].total += (paper.business_relevance_score || 0);
-                    feasibilityStats[paper.implementation_feasibility].count += 1;
-                }
-            });
-            
-            // Content creation rate by relevance score
-            const highRelevancePapers = completedPapers.filter(p => (p.business_relevance_score || 0) >= 8);
-            const highRelevanceContentRate = highRelevancePapers.length > 0 ? 
-                (highRelevancePapers.filter(p => p.content_created).length / highRelevancePapers.length * 100).toFixed(1) : 0;
-            
-            return {
-                feasibilityStats,
-                highRelevanceContentRate,
-                totalProcessed: completedPapers.length,
-                contentCreated: contentCreatedPapers.length
-            };
+        .stat-card {
+            text-align: center;
         }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--sl-color-primary-600);
+        }
+        
+        .papers-grid {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .paper-card {
+            width: 100%;
+        }
+        
+        .paper-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .paper-title {
+            font-weight: 600;
+            flex: 1;
+        }
+        
+        .paper-meta {
+            display: flex;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+            flex-wrap: wrap;
+        }
+        
+        .paper-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            align-items: center;
+        }
+        
+        .content-queue {
+            border-left: 4px solid var(--sl-color-success-600);
+        }
+        
+        .processing {
+            border-left: 4px solid var(--sl-color-warning-600);
+        }
+        
+        .pending {
+            border-left: 4px solid var(--sl-color-neutral-400);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .actions-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            align-items: center;
+        }
+        
+        .search-section {
+            border: 2px solid var(--sl-color-neutral-200);
+            transition: border-color 0.3s ease;
+        }
+        
+        .search-section:hover {
+            border-color: var(--sl-color-primary-400);
+        }
+        
+        .search-results-highlight {
+            border-left: 4px solid var(--sl-color-primary-600);
+        }
+        
+        .search-type-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .summary-section {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--sl-color-neutral-50);
+            border-radius: 8px;
+            border-left: 4px solid var(--sl-color-primary-600);
+        }
+        
+        .summary-content {
+            display: none;
+        }
+        
+        .summary-content.expanded {
+            display: block;
+        }
+        
+        .section-summary {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid var(--sl-color-neutral-300);
+        }
+        
+        .section-type {
+            font-weight: 600;
+            color: var(--sl-color-primary-700);
+            text-transform: capitalize;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .comprehensive-summary {
+            padding: 1rem;
+            background: var(--sl-color-neutral-50);
+            border-radius: var(--sl-border-radius-medium);
+            margin-top: 1rem;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: var(--sl-color-neutral-500);
+        }
+        
+        .loading sl-spinner {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        sl-tab-group::part(tabs) {
+            margin-bottom: 1rem;
+        }
+        
+        sl-tab-panel::part(base) {
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔬 PaperScout Dashboard</h1>
+        <p>AI-powered research paper discovery and analysis</p>
+    </div>
+
+    <!-- Actions Bar -->
+    <div class="actions-bar">
+        <sl-button variant="danger" size="medium" onclick="processAllPapers()">
+            <sl-icon name="play-circle" slot="prefix"></sl-icon>
+            Process All Pending
+        </sl-button>
+        <sl-button variant="default" size="medium" onclick="refreshData()">
+            <sl-icon name="arrow-clockwise" slot="prefix"></sl-icon>
+            Refresh
+        </sl-button>
+    </div>
+
+    <!-- Search Section -->
+    <sl-card class="search-section" style="margin-bottom: 2rem;">
+        <h2 slot="header">
+            <sl-icon name="search"></sl-icon>
+            Search Papers
+        </h2>
+        
+        <!-- Search Input -->
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+            <sl-input 
+                id="search-query" 
+                placeholder="Search papers (e.g., 'transformer attention', 'computer vision')"
+                style="flex: 1;"
+                onkeydown="handleSearchKeydown(event)"
+            ></sl-input>
+            <sl-button variant="primary" onclick="searchPapers()">
+                <sl-icon name="search" slot="prefix"></sl-icon>
+                Search
+            </sl-button>
+            <sl-button variant="default" onclick="clearSearch()">
+                <sl-icon name="x" slot="prefix"></sl-icon>
+                Clear
+            </sl-button>
+        </div>
+        
+        <!-- Search Filters -->
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;">
+            <sl-switch id="semantic-search" checked>
+                <sl-icon name="brain" slot="prefix"></sl-icon>
+                Semantic Search
+            </sl-switch>
+            
+            <sl-select id="relevance-filter" placeholder="Min Relevance" style="min-width: 150px;">
+                <sl-option value="">Any Relevance</sl-option>
+                <sl-option value="6">6+ Good</sl-option>
+                <sl-option value="7">7+ High</sl-option>
+                <sl-option value="8">8+ Excellent</sl-option>
+                <sl-option value="9">9+ Outstanding</sl-option>
+            </sl-select>
+            
+            <sl-select id="difficulty-filter" placeholder="Difficulty" style="min-width: 150px;">
+                <sl-option value="">Any Difficulty</sl-option>
+                <sl-option value="beginner">Beginner</sl-option>
+                <sl-option value="intermediate">Intermediate</sl-option>
+                <sl-option value="advanced">Advanced</sl-option>
+            </sl-select>
+            
+            <sl-select id="feasibility-filter" placeholder="Feasibility" style="min-width: 150px;">
+                <sl-option value="">Any Feasibility</sl-option>
+                <sl-option value="high">High</sl-option>
+                <sl-option value="medium">Medium</sl-option>
+                <sl-option value="low">Low</sl-option>
+            </sl-select>
+            
+            <sl-select id="status-filter" placeholder="Status" style="min-width: 150px;">
+                <sl-option value="">Any Status</sl-option>
+                <sl-option value="completed">Completed</sl-option>
+                <sl-option value="processing">Processing</sl-option>
+                <sl-option value="pending">Pending</sl-option>
+            </sl-select>
+        </div>
+        
+        <!-- Search Examples -->
+        <div style="margin-bottom: 1rem;">
+            <sl-details summary="💡 Search Examples & Tips" style="margin-bottom: 1rem;">
+                <div style="padding: 1rem 0;">
+                    <h4 style="margin-top: 0;">🧠 Semantic Search Examples:</h4>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        <li><strong>"transformer attention"</strong> - Find papers about attention mechanisms</li>
+                        <li><strong>"computer vision object detection"</strong> - Visual recognition research</li>
+                        <li><strong>"natural language processing"</strong> - NLP and text analysis</li>
+                        <li><strong>"reinforcement learning games"</strong> - RL applications in gaming</li>
+                    </ul>
+                    
+                    <h4>🔤 Text Search Examples:</h4>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        <li><strong>"BERT"</strong> - Exact model/technique names</li>
+                        <li><strong>"neural network"</strong> - Specific terminology</li>
+                        <li><strong>"OpenAI"</strong> - Author or organization names</li>
+                    </ul>
+                    
+                    <h4>🎯 Pro Tips:</h4>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        <li>Use <strong>Semantic Search</strong> for concept-based discovery</li>
+                        <li>Use <strong>Text Search</strong> for exact terms or names</li>
+                        <li>Combine with <strong>filters</strong> to narrow results</li>
+                        <li>Higher relevance scores (8+) are better for content creation</li>
+                    </ul>
+                </div>
+            </sl-details>
+        </div>
+        
+        <!-- Search Results -->
+        <div id="search-results-container" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">
+                    <sl-icon name="list"></sl-icon>
+                    Search Results
+                </h3>
+                <sl-badge id="search-count" variant="primary">0 results</sl-badge>
+            </div>
+            <div id="search-results" class="papers-grid"></div>
+        </div>
+    </sl-card>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <sl-card class="stat-card">
+            <div class="stat-number" id="total-papers">-</div>
+            <div>Total Papers</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="completed-papers">-</div>
+            <div>Completed</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="content-ready">-</div>
+            <div>Ready for Content</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="avg-relevance">-</div>
+            <div>Avg Relevance</div>
+        </sl-card>
+    </div>
+
+    <!-- Analytics Section -->
+    <div class="analytics-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+        <sl-card>
+            <h3 slot="header">
+                <sl-icon name="graph-up"></sl-icon>
+                Trending Techniques
+            </h3>
+            <div id="trending-techniques" class="loading">
+                <sl-spinner></sl-spinner>
+            </div>
+        </sl-card>
+        
+        <sl-card>
+            <h3 slot="header">
+                <sl-icon name="bullseye"></sl-icon>
+                High-Value Topics
+            </h3>
+            <div id="high-value-topics" class="loading">
+                <sl-spinner></sl-spinner>
+            </div>
+        </sl-card>
+    </div>
+
+    <!-- Content Strategy Insights -->
+    <sl-card style="margin-bottom: 2rem;">
+        <h3 slot="header">
+            <sl-icon name="lightbulb"></sl-icon>
+            Content Strategy Insights
+        </h3>
+        <div id="strategy-insights" class="loading">
+            <sl-spinner></sl-spinner>
+        </div>
+    </sl-card>
+
+    <!-- Papers Section -->
+    <sl-card>
+        <h2 slot="header">
+            <sl-icon name="file-text"></sl-icon>
+            Research Papers
+        </h2>
+        
+        <div id="papers-container" class="loading">
+            <sl-spinner style="font-size: 2rem;"></sl-spinner>
+            <p>Loading papers...</p>
+        </div>
+    </sl-card>
+
+    <!-- Shoelace JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/shoelace-autoloader.js"></script>
+    
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        let papers = [];
+        let stats = {};
+        let analytics = {};
+        let searchResults = [];
+        let isSearchActive = false;
+        
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+
         
         function updateAnalytics() {
             updateTrendingTechniques();
@@ -170,191 +477,8 @@
                 </div>
             `;
         }
-        
-        .header {
-            margin-bottom: 2rem;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            text-align: center;
-        }
-        
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: var(--sl-color-primary-600);
-        }
-        
-        .papers-grid {
-            display: grid;
-            gap: 1rem;
-        }
-        
-        .paper-card {
-            width: 100%;
-        }
-        
-        .paper-header {
-            display: flex;
-            justify-content: between;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .paper-title {
-            font-weight: 600;
-            flex: 1;
-        }
-        
-        .paper-meta {
-            display: flex;
-            gap: 0.5rem;
-            margin: 0.5rem 0;
-            flex-wrap: wrap;
-        }
-        
-        .paper-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            align-items: center;
-        }
-        
-        .content-queue {
-            border-left: 4px solid var(--sl-color-success-600);
-        }
-        
-        .processing {
-            border-left: 4px solid var(--sl-color-warning-600);
-        }
-        
-        .pending {
-            border-left: 4px solid var(--sl-color-neutral-400);
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 2rem;
-        }
-        
-        .actions-bar {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            align-items: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🔬 PaperScout Dashboard</h1>
-        <p>AI-powered research paper discovery and analysis</p>
-    </div>
 
-    <!-- Actions Bar -->
-    <div class="actions-bar">
-        <sl-button variant="danger" size="medium" onclick="processAllPapers()">
-            <sl-icon name="play-circle" slot="prefix"></sl-icon>
-            Process All Pending
-        </sl-button>
-        <sl-button variant="default" size="medium" onclick="refreshData()">
-            <sl-icon name="arrow-clockwise" slot="prefix"></sl-icon>
-            Refresh
-        </sl-button>
-    </div>
 
-    <!-- Stats Grid -->
-    <div class="stats-grid">
-        <sl-card class="stat-card">
-            <div class="stat-number" id="total-papers">-</div>
-            <div>Total Papers</div>
-        </sl-card>
-        
-        <sl-card class="stat-card">
-            <div class="stat-number" id="completed-papers">-</div>
-            <div>Completed</div>
-        </sl-card>
-        
-        <sl-card class="stat-card">
-            <div class="stat-number" id="content-ready">-</div>
-            <div>Ready for Content</div>
-        </sl-card>
-        
-        <sl-card class="stat-card">
-            <div class="stat-number" id="avg-relevance">-</div>
-            <div>Avg Relevance</div>
-        </sl-card>
-    </div>
-
-    <!-- Analytics Section -->
-    <div class="analytics-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
-        <sl-card>
-            <h3 slot="header">
-                <sl-icon name="graph-up"></sl-icon>
-                Trending Techniques
-            </h3>
-            <div id="trending-techniques" class="loading">
-                <sl-spinner></sl-spinner>
-            </div>
-        </sl-card>
-        
-        <sl-card>
-            <h3 slot="header">
-                <sl-icon name="bullseye"></sl-icon>
-                High-Value Topics
-            </h3>
-            <div id="high-value-topics" class="loading">
-                <sl-spinner></sl-spinner>
-            </div>
-        </sl-card>
-    </div>
-
-    <!-- Content Strategy Insights -->
-    <sl-card style="margin-bottom: 2rem;">
-        <h3 slot="header">
-            <sl-icon name="lightbulb"></sl-icon>
-            Content Strategy Insights
-        </h3>
-        <div id="strategy-insights" class="loading">
-            <sl-spinner></sl-spinner>
-        </div>
-    </sl-card>
-
-    <!-- Papers Section -->
-    <sl-card>
-        <h2 slot="header">
-            <sl-icon name="file-text"></sl-icon>
-            Research Papers
-        </h2>
-        
-        <div id="papers-container" class="loading">
-            <sl-spinner style="font-size: 2rem;"></sl-spinner>
-            <p>Loading papers...</p>
-        </div>
-    </sl-card>
-
-    <!-- Shoelace JS -->
-    <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/shoelace-autoloader.js"></script>
-    
-    <script>
-        const API_BASE = 'http://localhost:8000';
-        
-        let papers = [];
-        let stats = {};
-        let analytics = {};
-        
-        // Load data on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadData();
-        });
         
         async function loadData() {
             try {
@@ -380,6 +504,76 @@
             const response = await fetch(`${API_BASE}/api/processing/stats`);
             if (!response.ok) throw new Error('Failed to fetch stats');
             stats = await response.json();
+        }
+        
+        // Analytics calculation functions
+        function calculateTrendingTechniques() {
+            const techniqueCount = {};
+            papers.forEach(paper => {
+                if (paper.techniques && paper.processing_status === 'completed') {
+                    paper.techniques.forEach(tech => {
+                        techniqueCount[tech] = (techniqueCount[tech] || 0) + 1;
+                    });
+                }
+            });
+            
+            return Object.entries(techniqueCount)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5)
+                .map(([name, count]) => ({ name, count }));
+        }
+        
+        function calculateHighValueTopics() {
+            const topicRelevance = {};
+            papers.forEach(paper => {
+                if (paper.main_topics && paper.business_relevance_score && paper.processing_status === 'completed') {
+                    paper.main_topics.forEach(topic => {
+                        if (!topicRelevance[topic]) {
+                            topicRelevance[topic] = { total: 0, count: 0 };
+                        }
+                        topicRelevance[topic].total += paper.business_relevance_score;
+                        topicRelevance[topic].count += 1;
+                    });
+                }
+            });
+            
+            return Object.entries(topicRelevance)
+                .map(([name, data]) => ({ 
+                    name, 
+                    avgRelevance: (data.total / data.count).toFixed(1),
+                    paperCount: data.count 
+                }))
+                .sort((a, b) => b.avgRelevance - a.avgRelevance)
+                .slice(0, 5);
+        }
+        
+        function calculateStrategyInsights() {
+            const completedPapers = papers.filter(p => p.processing_status === 'completed');
+            const contentCreatedPapers = papers.filter(p => p.content_created);
+            
+            // Implementation feasibility analysis
+            const feasibilityStats = {};
+            completedPapers.forEach(paper => {
+                if (paper.implementation_feasibility) {
+                    if (!feasibilityStats[paper.implementation_feasibility]) {
+                        feasibilityStats[paper.implementation_feasibility] = { total: 0, count: 0 };
+                    }
+                    feasibilityStats[paper.implementation_feasibility].total += (paper.business_relevance_score || 0);
+                    feasibilityStats[paper.implementation_feasibility].count += 1;
+                }
+            });
+            
+            // Content creation rate by relevance score
+            const highRelevancePapers = completedPapers.filter(p => (p.business_relevance_score || 0) >= 8);
+            const highRelevanceContentRate = highRelevancePapers.length > 0 ? 
+                (highRelevancePapers.filter(p => p.content_created).length / highRelevancePapers.length * 100).toFixed(1) : 0;
+            
+            return {
+                feasibilityStats,
+                highRelevanceContentRate,
+                totalProcessed: completedPapers.length,
+                contentCreated: contentCreatedPapers.length
+            };
         }
         
         async function loadAnalytics() {
@@ -458,7 +652,9 @@
             return `
                 <sl-card class="paper-card ${cardClass}">
                     <div class="paper-header">
-                        <div class="paper-title">${paper.title}</div>
+                        <div class="paper-title">${paper.title}
+                            <sl-badge variant="primary">${paper.id}</sl-badge>
+                        </div>
                         ${isContentReady ? '<sl-icon name="star-fill" style="color: var(--sl-color-warning-600);"></sl-icon>' : ''}
                     </div>
                     
@@ -496,10 +692,69 @@
                             </sl-button>` : ''
                         }
                         
+                        ${paper.processing_status === 'completed' ? 
+                            `<sl-button size="small" variant="default" onclick="toggleSummaries(${paper.id})">
+                                <sl-icon name="file-text" slot="prefix"></sl-icon>
+                                View Summaries
+                            </sl-button>` : ''
+                        }
+                        
                         <sl-button size="small" variant="default" onclick="window.open('${paper.url}', '_blank')">
                             <sl-icon name="box-arrow-up-right" slot="prefix"></sl-icon>
                             View Paper
                         </sl-button>
+                    </div>
+                    
+                    <!-- Summary Section -->
+                    <div id="summary-section-${paper.id}" class="summary-section" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h4 style="margin: 0;">
+                                <sl-icon name="list"></sl-icon>
+                                Paper Summaries
+                            </h4>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <sl-select id="summary-style-${paper.id}" size="small" value="default" style="width: 150px;">
+                                    <sl-option value="default">Default Style</sl-option>
+                                    <sl-option value="academic">Academic</sl-option>
+                                    <sl-option value="business">Business</sl-option>
+                                    <sl-option value="social">Social</sl-option>
+                                    <sl-option value="educational">Educational</sl-option>
+                                </sl-select>
+                                <sl-button size="small" variant="primary" onclick="regenerateComprehensiveSummary(${paper.id})">
+                                    <sl-icon name="arrow-clockwise" slot="prefix"></sl-icon>
+                                    Regenerate
+                                </sl-button>
+                                <sl-button size="small" variant="default" onclick="hideSummaries(${paper.id})">
+                                    <sl-icon name="x"></sl-icon>
+                                </sl-button>
+                            </div>
+                        </div>
+                        
+                        <!-- Tabs for different summary views -->
+                        <sl-tab-group>
+                            <sl-tab slot="nav" panel="section-summaries">Section Summaries</sl-tab>
+                            <sl-tab slot="nav" panel="comprehensive">Comprehensive</sl-tab>
+                            
+                            <!-- Section Summaries Tab -->
+                            <sl-tab-panel name="section-summaries">
+                                <div id="summary-content-${paper.id}" class="summary-content">
+                                    <div class="loading">
+                                        <sl-spinner></sl-spinner>
+                                        <p>Loading summaries...</p>
+                                    </div>
+                                </div>
+                            </sl-tab-panel>
+                            
+                            <!-- Comprehensive Summary Tab -->
+                            <sl-tab-panel name="comprehensive">
+                                <div id="comprehensive-summary-${paper.id}" class="comprehensive-summary">
+                                    <div class="loading">
+                                        <sl-spinner></sl-spinner>
+                                        <p>Loading comprehensive summary...</p>
+                                    </div>
+                                </div>
+                            </sl-tab-panel>
+                        </sl-tab-group>
                     </div>
                 </sl-card>
             `;
@@ -562,26 +817,402 @@
             showSuccess('Data refreshed');
         }
         
-        function showSuccess(message) {
-            const alert = document.createElement('sl-alert');
-            alert.variant = 'success';
-            alert.closable = true;
-            alert.innerHTML = `<sl-icon name="check-circle" slot="icon"></sl-icon>${message}`;
-            document.body.appendChild(alert);
-            alert.show();
-            
-            setTimeout(() => alert.remove(), 5000);
+        // ===== SEARCH FUNCTIONS =====
+        
+        function handleSearchKeydown(event) {
+            if (event.key === 'Enter') {
+                searchPapers();
+            }
         }
         
-        function showError(message) {
-            const alert = document.createElement('sl-alert');
-            alert.variant = 'danger';
-            alert.closable = true;
-            alert.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${message}`;
-            document.body.appendChild(alert);
-            alert.show();
+        async function searchPapers() {
+            const query = document.getElementById('search-query').value.trim();
             
-            setTimeout(() => alert.remove(), 7000);
+            if (!query) {
+                showError('Please enter a search query');
+                return;
+            }
+            
+            try {
+                // Show loading state
+                const resultsContainer = document.getElementById('search-results');
+                resultsContainer.innerHTML = '<div class="loading"><sl-spinner></sl-spinner><p>Searching...</p></div>';
+                document.getElementById('search-results-container').style.display = 'block';
+                
+                const searchUrl = buildSearchURL(query);
+                console.log('Search URL:', searchUrl);
+                
+                const response = await fetch(searchUrl);
+                if (!response.ok) throw new Error('Search failed');
+                
+                const responseData = await response.json();
+                
+                // Handle different response formats
+                if (responseData.papers) {
+                    // Search endpoint format: {papers: [...], total_count: N, query: "..."}
+                    searchResults = responseData.papers;
+                } else if (Array.isArray(responseData)) {
+                    // Direct array format
+                    searchResults = responseData;
+                } else {
+                    throw new Error('Unexpected response format');
+                }
+                
+                isSearchActive = true;
+                displaySearchResults();
+                
+            } catch (error) {
+                showError('Search failed: ' + error.message);
+                document.getElementById('search-results-container').style.display = 'none';
+            }
+        }
+        
+        function buildSearchURL(query) {
+            const isSemanticSearch = document.getElementById('semantic-search').checked;
+            const relevanceFilter = document.getElementById('relevance-filter').value;
+            const difficultyFilter = document.getElementById('difficulty-filter').value;
+            const feasibilityFilter = document.getElementById('feasibility-filter').value;
+            const statusFilter = document.getElementById('status-filter').value;
+            
+            // Use search endpoint for semantic search, papers endpoint for filtered browsing
+            if (isSemanticSearch && query) {
+                let url = `${API_BASE}/api/search/?q=${encodeURIComponent(query)}&limit=50`;
+                
+                // Add filters as additional parameters
+                if (relevanceFilter) url += `&min_relevance=${relevanceFilter}`;
+                if (difficultyFilter) url += `&difficulty_level=${difficultyFilter}`;
+                if (feasibilityFilter) url += `&implementation_feasibility=${feasibilityFilter}`;
+                if (statusFilter) url += `&processing_status=${statusFilter}`;
+                
+                return url;
+            } else {
+                // Text search using papers endpoint with filters
+                let url = `${API_BASE}/api/papers/?limit=50`;
+                
+                if (query) url += `&search=${encodeURIComponent(query)}`;
+                if (relevanceFilter) url += `&min_relevance=${relevanceFilter}`;
+                if (difficultyFilter) url += `&difficulty_level=${difficultyFilter}`;
+                if (feasibilityFilter) url += `&implementation_feasibility=${feasibilityFilter}`;
+                if (statusFilter) url += `&processing_status=${statusFilter}`;
+                
+                return url;
+            }
+        }
+        
+        function displaySearchResults() {
+            const resultsContainer = document.getElementById('search-results');
+            const countBadge = document.getElementById('search-count');
+            const isSemanticSearch = document.getElementById('semantic-search').checked;
+            
+            // Update count
+            countBadge.textContent = `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`;
+            countBadge.variant = searchResults.length > 0 ? 'primary' : 'neutral';
+            
+            if (searchResults.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--sl-color-neutral-500);">
+                        <sl-icon name="search" style="font-size: 3rem; margin-bottom: 1rem;"></sl-icon>
+                        <p>No papers found matching your search criteria.</p>
+                        <p style="font-size: 0.9rem;">Try adjusting your filters or search terms.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Add search type indicator
+            const searchTypeIndicator = isSemanticSearch ? 
+                '<sl-badge variant="success" style="margin-bottom: 1rem;"><sl-icon name="brain" slot="prefix"></sl-icon>Semantic Search</sl-badge>' :
+                '<sl-badge variant="primary" style="margin-bottom: 1rem;"><sl-icon name="type" slot="prefix"></sl-icon>Text Search</sl-badge>';
+            
+            // Sort results by relevance score if available
+            const sortedResults = [...searchResults].sort((a, b) => {
+                return (b.business_relevance_score || 0) - (a.business_relevance_score || 0);
+            });
+            
+            resultsContainer.innerHTML = searchTypeIndicator + 
+                sortedResults.map(paper => createPaperCard(paper, true)).join('');
+        }
+        
+        function clearSearch() {
+            document.getElementById('search-query').value = '';
+            document.getElementById('relevance-filter').value = '';
+            document.getElementById('difficulty-filter').value = '';
+            document.getElementById('feasibility-filter').value = '';
+            document.getElementById('status-filter').value = '';
+            document.getElementById('search-results-container').style.display = 'none';
+            
+            searchResults = [];
+            isSearchActive = false;
+            
+            showSuccess('Search cleared');
+        }
+        
+        // ===== END SEARCH FUNCTIONS =====
+        
+        // ===== SUMMARY FUNCTIONS =====
+        
+        async function toggleSummaries(paperId) {
+            console.log('Toggling summaries for paper:', paperId);
+            const summarySection = document.getElementById(`summary-section-${paperId}`);
+            const summaryContent = document.getElementById(`summary-content-${paperId}`);
+            const styleSelect = document.getElementById(`summary-style-${paperId}`);
+            
+            if (!summarySection || !summaryContent) {
+                console.error('Summary elements not found for paper:', paperId);
+                return;
+            }
+            
+            if (summarySection.style.display === 'none' || summarySection.style.display === '') {
+                // Show and load summaries
+                console.log('Showing summary section');
+                summarySection.style.display = 'block';
+                
+                // Load both section summaries and comprehensive summary
+                if (!summaryContent.dataset.loaded) {
+                    console.log('Loading summaries...');
+                    await Promise.all([
+                        fetchPaperSections(paperId),
+                        loadComprehensiveSummary(paperId)
+                    ]);
+                }
+                
+                // Add event listener for style changes
+                styleSelect.addEventListener('sl-change', () => {
+                    loadComprehensiveSummary(paperId);
+                });
+            } else {
+                // Hide summaries
+                console.log('Hiding summary section');
+                summarySection.style.display = 'none';
+            }
+        }
+        
+        function hideSummaries(paperId) {
+            const summarySection = document.getElementById(`summary-section-${paperId}`);
+            summarySection.style.display = 'none';
+        }
+        
+        async function fetchPaperSections(paperId) {
+            try {
+                console.log('Fetching sections for paper:', paperId);
+                const response = await fetch(`${API_BASE}/api/papers/${paperId}/sections`);
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) throw new Error('Failed to fetch sections');
+                
+                const sections = await response.json();
+                console.log('Fetched sections:', sections);
+                
+                displaySummaries(paperId, sections);
+                
+            } catch (error) {
+                console.error('Error fetching sections:', error);
+                const summaryContent = document.getElementById(`summary-content-${paperId}`);
+                summaryContent.innerHTML = `
+                    <div style="text-align: center; padding: 1rem; color: var(--sl-color-danger-600);">
+                        <sl-icon name="exclamation-triangle" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></sl-icon>
+                        <p>Failed to load summaries: ${error.message}</p>
+                    </div>
+                `;
+                
+                // Force the content to be visible (override CSS that hides it)
+                summaryContent.style.display = 'block';
+            }
+        }
+        
+        function displaySummaries(paperId, sections) {
+            console.log('Displaying summaries for paper:', paperId, 'Sections:', sections);
+            const summaryContent = document.getElementById(`summary-content-${paperId}`);
+            
+            if (!summaryContent) {
+                console.error('Summary content element not found for paper:', paperId);
+                return;
+            }
+            
+            if (!sections || sections.length === 0) {
+                console.log('No sections found for paper:', paperId);
+                summaryContent.innerHTML = `
+                    <div style="text-align: center; padding: 1rem; color: var(--sl-color-neutral-500);">
+                        <sl-icon name="file-text" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></sl-icon>
+                        <p>No summaries available for this paper yet.</p>
+                        <p style="font-size: 0.9rem;">Summaries are generated during paper processing.</p>
+                    </div>
+                `;
+                summaryContent.dataset.loaded = 'true';
+                
+                // Force the content to be visible (override CSS that hides it)
+                summaryContent.style.display = 'block';
+                
+                return;
+            }
+            
+            console.log('Processing', sections.length, 'sections');
+            
+            // Sort sections by order_index
+            const sortedSections = [...sections].sort((a, b) => {
+                if (a.order_index === null && b.order_index === null) return 0;
+                if (a.order_index === null) return 1;
+                if (b.order_index === null) return -1;
+                return a.order_index - b.order_index;
+            });
+            
+            console.log('Sorted sections:', sortedSections);
+            
+            // Create section summaries HTML
+            const sectionsHtml = sortedSections.map(section => {
+                const sectionIcon = getSectionIcon(section.section_type);
+                console.log('Processing section:', section.section_type, 'Summary:', section.summary);
+                
+                return `
+                    <div class="section-summary">
+                        <div class="section-type">
+                            <sl-icon name="${sectionIcon}"></sl-icon>
+                            ${section.section_title || section.section_type || 'Content'}
+                        </div>
+                        ${section.summary ? `
+                            <div style="color: var(--sl-color-neutral-700); line-height: 1.5;">
+                                ${section.summary}
+                            </div>
+                        ` : `
+                            <div style="color: var(--sl-color-neutral-500); font-style: italic;">
+                                No summary available for this section.
+                            </div>
+                        `}
+                    </div>
+                `;
+            }).join('');
+            
+            const finalHtml = `
+                <div style="margin-bottom: 1rem;">
+                    <sl-badge variant="primary">
+                        <sl-icon name="layers" slot="prefix"></sl-icon>
+                        ${sections.length} section${sections.length !== 1 ? 's' : ''}
+                    </sl-badge>
+                </div>
+                ${sectionsHtml}
+            `;
+            
+            console.log('Setting innerHTML with:', finalHtml);
+            summaryContent.innerHTML = finalHtml;
+            summaryContent.dataset.loaded = 'true';
+            
+            // Force the content to be visible (override CSS that hides it)
+            summaryContent.style.display = 'block';
+            
+            console.log('Summary display completed for paper:', paperId);
+        }
+        
+        function getSectionIcon(sectionType) {
+            const iconMap = {
+                'abstract': 'file-text',
+                'introduction': 'play-circle',
+                'methodology': 'gear',
+                'results': 'graph-up',
+                'discussion': 'chat-dots',
+                'conclusion': 'check-circle',
+                'related_work': 'link',
+                'references': 'book',
+                'acknowledgements': 'heart'
+            };
+            
+            return iconMap[sectionType?.toLowerCase()] || 'file-text';
+        }
+        
+        // Add these new functions for comprehensive summary handling
+        async function loadComprehensiveSummary(paperId, forceRegenerate = false) {
+            const summaryContainer = document.getElementById(`comprehensive-summary-${paperId}`);
+            const styleSelect = document.getElementById(`summary-style-${paperId}`);
+            const style = styleSelect.value;
+            
+            try {
+                // Show loading state
+                summaryContainer.innerHTML = `
+                    <div class="loading">
+                        <sl-spinner></sl-spinner>
+                        <p>${forceRegenerate ? 'Regenerating summary...' : 'Loading summary...'}</p>
+                    </div>
+                `;
+                
+                const url = `${API_BASE}/api/papers/${paperId}/comprehensive-summary${style !== 'default' ? `?style=${style}` : ''}${forceRegenerate ? '&force=true' : ''}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) throw new Error('Failed to fetch comprehensive summary');
+                
+                const data = await response.json();
+                
+                summaryContainer.innerHTML = `
+                    <div style="color: var(--sl-color-neutral-700); line-height: 1.5; white-space: pre-wrap;">
+                        ${data.comprehensive_summary}
+                    </div>
+                    ${data.cached && !forceRegenerate ? '<sl-badge variant="neutral" style="margin-top: 1rem;">Cached Summary</sl-badge>' : ''}
+                `;
+                
+            } catch (error) {
+                summaryContainer.innerHTML = `
+                    <div style="text-align: center; padding: 1rem; color: var(--sl-color-danger-600);">
+                        <sl-icon name="exclamation-triangle" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></sl-icon>
+                        <p>Failed to load comprehensive summary: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function regenerateComprehensiveSummary(paperId) {
+            try {
+                await loadComprehensiveSummary(paperId, true);
+                showSuccess('Summary regenerated successfully');
+            } catch (error) {
+                showError('Failed to regenerate summary: ' + error.message);
+            }
+        }
+        
+        // ===== END SUMMARY FUNCTIONS =====
+        
+        function showSuccess(message) {
+            // Create a simple toast using basic HTML/CSS instead
+            const toast = document.createElement('div');
+            toast.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #10b981;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 1000;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                ">
+                    ✅ ${message}
+                </div>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 3000);
+        }
+                
+        function showError(message) {
+            const toast = document.createElement('div');
+            toast.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #ef4444;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 1000;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                ">
+                    ❌ ${message}
+                </div>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 5000);
         }
     </script>
 </body>

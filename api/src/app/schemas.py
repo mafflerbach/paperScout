@@ -98,6 +98,17 @@ class PaperSectionResponse(PaperSectionBase):
     id: int
     paper_id: int
     summary: Optional[str]
+    
+    # Multi-style refined summaries
+    summary_academic: Optional[str] = None    # Technical precision for researchers
+    summary_business: Optional[str] = None    # ROI and practical applications focus
+    summary_social: Optional[str] = None      # Optimized for LinkedIn/Twitter posts
+    summary_educational: Optional[str] = None # Accessible for students/learners
+    
+    # Refinement tracking
+    refinement_status: Optional[str] = "pending"
+    refined_at: Optional[datetime] = None
+    
     created_at: datetime
     
     class Config:

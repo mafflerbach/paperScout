@@ -44,6 +44,14 @@ class Paper(Base):
     content_created = Column(Boolean, default=False)
     content_note_path = Column(Text)
     
+    # Comprehensive summaries
+    comprehensive_summary = Column(Text)
+    comprehensive_summary_academic = Column(Text)
+    comprehensive_summary_business = Column(Text)
+    comprehensive_summary_social = Column(Text)
+    comprehensive_summary_educational = Column(Text)
+    comprehensive_summary_updated_at = Column(DateTime(timezone=True))
+    
     # Constraints
     __table_args__ = (
         CheckConstraint('business_relevance_score >= 1 AND business_relevance_score <= 10'),
@@ -64,6 +72,16 @@ class PaperSection(Base):
     content = Column(Text, nullable=False)
     summary = Column(Text)
     order_index = Column(Integer)
+    
+    # Multi-style refined summaries
+    summary_academic = Column(Text)    # Technical precision for researchers
+    summary_business = Column(Text)    # ROI and practical applications focus
+    summary_social = Column(Text)      # Optimized for LinkedIn/Twitter posts
+    summary_educational = Column(Text) # Accessible for students/learners
+    
+    # Refinement tracking
+    refinement_status = Column(String(20), default="pending") # pending, processing, completed, failed
+    refined_at = Column(DateTime(timezone=True))
     
     # Vector embedding
     embedding = Column(Vector(384))  # Adjust dimension as needed

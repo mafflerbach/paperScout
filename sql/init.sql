@@ -50,6 +50,16 @@ CREATE TABLE paper_sections (
     summary TEXT,
     order_index INTEGER,
     
+    -- Multi-style refined summaries
+    summary_academic TEXT,    -- Technical precision for researchers
+    summary_business TEXT,    -- ROI and practical applications focus
+    summary_social TEXT,      -- Optimized for LinkedIn/Twitter posts
+    summary_educational TEXT, -- Accessible for students/learners
+    
+    -- Refinement tracking
+    refinement_status VARCHAR(20) DEFAULT 'pending', -- pending, processing, completed, failed
+    refined_at TIMESTAMP WITH TIME ZONE,
+    
     -- Vector embedding for semantic search
     embedding vector(384), -- Adjust dimension based on your embedding model
     
@@ -93,6 +103,7 @@ CREATE INDEX idx_papers_content_created ON papers(content_created);
 CREATE INDEX idx_paper_sections_paper_id ON paper_sections(paper_id);
 CREATE INDEX idx_paper_sections_type ON paper_sections(section_type);
 CREATE INDEX idx_paper_sections_embedding ON paper_sections USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_paper_sections_refinement_status ON paper_sections(refinement_status);
 
 CREATE INDEX idx_tags_name ON tags(name);
 CREATE INDEX idx_tags_category ON tags(category);
