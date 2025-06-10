@@ -1,0 +1,72 @@
+# macOS clutter
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+
+# Jupyter/IPython (if applicable)
+.ipynb_checkpoints/
+
+# Docker
+*.log
+*.pid
+
+# Pipenv/Poetry (optional)
+Pipfile.lock
+poetry.lock
+
+# Node/Vite/Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Vite cache
+*.tsbuildinfo
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# IDEs and editor junk
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# Ignore all PDFs
+pdfs/
+
+# Local testing and scratch data
+*.sqlite3
+*.db
+*.log
+*.test.*
+test_*.json
+
+# Ignore compiled HTML/JS (optional if build artifacts live in repo)
+*.html
+*.js
+*.map
+
+# Git backup files
+*.orig
+
+# Ignore secret config if any (adjust as needed)
+secrets.*
+.env.*
+
+# Ignore docker-related volumes, if mounted
+volumes/

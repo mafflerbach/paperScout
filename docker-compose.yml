@@ -1,0 +1,144 @@
+version: '3.8'
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: paperscout_db
+    environment:
+      POSTGRES_DB: paperscout
+      POSTGRES_USER: scout
+      POSTGRES_PASSWORD: secure_password_change_me
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./pdfs:/var/lib/paperscout/pdfs  # PDF storage
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scout -d paperscout"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # PaperScout API
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: paperscout_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://scout:secure_password_change_me@postgres:5432/paperscout
+      - PDF_STORAGE_PATH=/app/pdfs
+      - LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - LLM_MODEL=llama-3.2-3b-instruct  # Adjust to your LM Studio model name
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2  # Or your preferred model
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./api/src/app:/app:rw  # This would give you hot-reload
+      - ./pdfs:/app/pdfs:rw  # PDF storage accessible to API
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Paper processing worker (for batch jobs)
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: paperscout_worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://scout:secure_password_change_me@postgres:5432/paperscout
+      - PDF_STORAGE_PATH=/app/pdfs
+      - LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - LLM_MODEL=local-model
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - PYTHONPATH=/app
+      - WORKER_MODE=true
+    volumes:
+      - ./api/src/app:/app:rw  # This would give you hot-reload
+      - ./pdfs:/app/pdfs:rw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "-m", "app.worker"]  # Adjust to your worker script
+    restart: unless-stopped
+    profiles:
+      - worker  # Start with --profile worker
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: paperscout_frontend
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_APP_NAME=PaperScout
+    restart: unless-stopped
+
+  # pgAdmin for database management (development)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: paperscout_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@paperscout.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+      PGADMIN_CONFIG_WTF_CSRF_ENABLED: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # Redis for job queues (optional, for future scaling)
+  redis:
+    image: redis:7-alpine
+    container_name: paperscout_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    profiles:
+      - queue
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: paperscout_network
