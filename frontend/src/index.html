@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaperScout Dashboard</title>
+    
+    <!-- Shoelace CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/themes/light.css" />
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: #f8fafc;
+        }
+        
+        // Analytics calculation functions
+        function calculateTrendingTechniques() {
+            const techniqueCount = {};
+            papers.forEach(paper => {
+                if (paper.techniques && paper.processing_status === 'completed') {
+                    paper.techniques.forEach(tech => {
+                        techniqueCount[tech] = (techniqueCount[tech] || 0) + 1;
+                    });
+                }
+            });
+            
+            return Object.entries(techniqueCount)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5)
+                .map(([name, count]) => ({ name, count }));
+        }
+        
+        function calculateHighValueTopics() {
+            const topicRelevance = {};
+            papers.forEach(paper => {
+                if (paper.main_topics && paper.business_relevance_score && paper.processing_status === 'completed') {
+                    paper.main_topics.forEach(topic => {
+                        if (!topicRelevance[topic]) {
+                            topicRelevance[topic] = { total: 0, count: 0 };
+                        }
+                        topicRelevance[topic].total += paper.business_relevance_score;
+                        topicRelevance[topic].count += 1;
+                    });
+                }
+            });
+            
+            return Object.entries(topicRelevance)
+                .map(([name, data]) => ({ 
+                    name, 
+                    avgRelevance: (data.total / data.count).toFixed(1),
+                    paperCount: data.count 
+                }))
+                .sort((a, b) => b.avgRelevance - a.avgRelevance)
+                .slice(0, 5);
+        }
+        
+        function calculateStrategyInsights() {
+            const completedPapers = papers.filter(p => p.processing_status === 'completed');
+            const contentCreatedPapers = papers.filter(p => p.content_created);
+            
+            // Implementation feasibility analysis
+            const feasibilityStats = {};
+            completedPapers.forEach(paper => {
+                if (paper.implementation_feasibility) {
+                    if (!feasibilityStats[paper.implementation_feasibility]) {
+                        feasibilityStats[paper.implementation_feasibility] = { total: 0, count: 0 };
+                    }
+                    feasibilityStats[paper.implementation_feasibility].total += (paper.business_relevance_score || 0);
+                    feasibilityStats[paper.implementation_feasibility].count += 1;
+                }
+            });
+            
+            // Content creation rate by relevance score
+            const highRelevancePapers = completedPapers.filter(p => (p.business_relevance_score || 0) >= 8);
+            const highRelevanceContentRate = highRelevancePapers.length > 0 ? 
+                (highRelevancePapers.filter(p => p.content_created).length / highRelevancePapers.length * 100).toFixed(1) : 0;
+            
+            return {
+                feasibilityStats,
+                highRelevanceContentRate,
+                totalProcessed: completedPapers.length,
+                contentCreated: contentCreatedPapers.length
+            };
+        }
+        
+        function updateAnalytics() {
+            updateTrendingTechniques();
+            updateHighValueTopics();
+            updateStrategyInsights();
+        }
+        
+        function updateTrendingTechniques() {
+            const container = document.getElementById('trending-techniques');
+            const techniques = analytics.trendingTechniques || [];
+            
+            if (techniques.length === 0) {
+                container.innerHTML = '<p style="color: var(--sl-color-neutral-500);">No technique data yet</p>';
+                return;
+            }
+            
+            container.innerHTML = techniques.map(tech => `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 500;">${tech.name}</span>
+                    <sl-badge variant="primary">${tech.count} papers</sl-badge>
+                </div>
+            `).join('');
+        }
+        
+        function updateHighValueTopics() {
+            const container = document.getElementById('high-value-topics');
+            const topics = analytics.highValueTopics || [];
+            
+            if (topics.length === 0) {
+                container.innerHTML = '<p style="color: var(--sl-color-neutral-500);">No topic data yet</p>';
+                return;
+            }
+            
+            container.innerHTML = topics.map(topic => `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 500;">${topic.name}</span>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <sl-badge variant="success">${topic.avgRelevance}/10</sl-badge>
+                        <sl-badge variant="neutral">${topic.paperCount}</sl-badge>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function updateStrategyInsights() {
+            const container = document.getElementById('strategy-insights');
+            const insights = analytics.strategyInsights || {};
+            
+            if (Object.keys(insights).length === 0) {
+                container.innerHTML = '<p style="color: var(--sl-color-neutral-500);">No insights available yet</p>';
+                return;
+            }
+            
+            const feasibilityAnalysis = Object.entries(insights.feasibilityStats || {})
+                .map(([level, data]) => {
+                    const avgRelevance = data.count > 0 ? (data.total / data.count).toFixed(1) : 0;
+                    return `
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>${level.charAt(0).toUpperCase() + level.slice(1)} Implementation:</strong> 
+                            ${avgRelevance}/10 avg relevance (${data.count} papers)
+                        </div>
+                    `;
+                }).join('');
+            
+            container.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <h4 style="margin: 0 0 0.5rem 0;">Implementation Feasibility</h4>
+                        ${feasibilityAnalysis || '<p style="color: var(--sl-color-neutral-500);">No feasibility data</p>'}
+                    </div>
+                    <div>
+                        <h4 style="margin: 0 0 0.5rem 0;">Content Pipeline</h4>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>High-value content rate:</strong> ${insights.highRelevanceContentRate}%
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Papers processed:</strong> ${insights.totalProcessed}
+                        </div>
+                        <div>
+                            <strong>Content created:</strong> ${insights.contentCreated}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        .header {
+            margin-bottom: 2rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--sl-color-primary-600);
+        }
+        
+        .papers-grid {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .paper-card {
+            width: 100%;
+        }
+        
+        .paper-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .paper-title {
+            font-weight: 600;
+            flex: 1;
+        }
+        
+        .paper-meta {
+            display: flex;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+            flex-wrap: wrap;
+        }
+        
+        .paper-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            align-items: center;
+        }
+        
+        .content-queue {
+            border-left: 4px solid var(--sl-color-success-600);
+        }
+        
+        .processing {
+            border-left: 4px solid var(--sl-color-warning-600);
+        }
+        
+        .pending {
+            border-left: 4px solid var(--sl-color-neutral-400);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .actions-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔬 PaperScout Dashboard</h1>
+        <p>AI-powered research paper discovery and analysis</p>
+    </div>
+
+    <!-- Actions Bar -->
+    <div class="actions-bar">
+        <sl-button variant="danger" size="medium" onclick="processAllPapers()">
+            <sl-icon name="play-circle" slot="prefix"></sl-icon>
+            Process All Pending
+        </sl-button>
+        <sl-button variant="default" size="medium" onclick="refreshData()">
+            <sl-icon name="arrow-clockwise" slot="prefix"></sl-icon>
+            Refresh
+        </sl-button>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <sl-card class="stat-card">
+            <div class="stat-number" id="total-papers">-</div>
+            <div>Total Papers</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="completed-papers">-</div>
+            <div>Completed</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="content-ready">-</div>
+            <div>Ready for Content</div>
+        </sl-card>
+        
+        <sl-card class="stat-card">
+            <div class="stat-number" id="avg-relevance">-</div>
+            <div>Avg Relevance</div>
+        </sl-card>
+    </div>
+
+    <!-- Analytics Section -->
+    <div class="analytics-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+        <sl-card>
+            <h3 slot="header">
+                <sl-icon name="graph-up"></sl-icon>
+                Trending Techniques
+            </h3>
+            <div id="trending-techniques" class="loading">
+                <sl-spinner></sl-spinner>
+            </div>
+        </sl-card>
+        
+        <sl-card>
+            <h3 slot="header">
+                <sl-icon name="bullseye"></sl-icon>
+                High-Value Topics
+            </h3>
+            <div id="high-value-topics" class="loading">
+                <sl-spinner></sl-spinner>
+            </div>
+        </sl-card>
+    </div>
+
+    <!-- Content Strategy Insights -->
+    <sl-card style="margin-bottom: 2rem;">
+        <h3 slot="header">
+            <sl-icon name="lightbulb"></sl-icon>
+            Content Strategy Insights
+        </h3>
+        <div id="strategy-insights" class="loading">
+            <sl-spinner></sl-spinner>
+        </div>
+    </sl-card>
+
+    <!-- Papers Section -->
+    <sl-card>
+        <h2 slot="header">
+            <sl-icon name="file-text"></sl-icon>
+            Research Papers
+        </h2>
+        
+        <div id="papers-container" class="loading">
+            <sl-spinner style="font-size: 2rem;"></sl-spinner>
+            <p>Loading papers...</p>
+        </div>
+    </sl-card>
+
+    <!-- Shoelace JS -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/shoelace-autoloader.js"></script>
+    
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        let papers = [];
+        let stats = {};
+        let analytics = {};
+        
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+        
+        async function loadData() {
+            try {
+                await Promise.all([
+                    loadPapers(),
+                    loadStats()
+                ]);
+                // Load analytics after papers are loaded (since it depends on papers data)
+                await loadAnalytics();
+                updateDisplay();
+            } catch (error) {
+                showError('Failed to load data: ' + error.message);
+            }
+        }
+        
+        async function loadPapers() {
+            const response = await fetch(`${API_BASE}/api/papers/`);
+            if (!response.ok) throw new Error('Failed to fetch papers');
+            papers = await response.json();
+        }
+        
+        async function loadStats() {
+            const response = await fetch(`${API_BASE}/api/processing/stats`);
+            if (!response.ok) throw new Error('Failed to fetch stats');
+            stats = await response.json();
+        }
+        
+        async function loadAnalytics() {
+            try {
+                // Calculate analytics from papers data (call this after papers are loaded)
+                analytics = {
+                    trendingTechniques: calculateTrendingTechniques(),
+                    highValueTopics: calculateHighValueTopics(),
+                    strategyInsights: calculateStrategyInsights()
+                };
+            } catch (error) {
+                console.warn('Analytics calculation failed:', error);
+                analytics = { trendingTechniques: [], highValueTopics: [], strategyInsights: {} };
+            }
+        }
+        
+        function updateDisplay() {
+            updateStats();
+            updatePapers();
+            updateAnalytics();
+        }
+        
+        function updateStats() {
+            document.getElementById('total-papers').textContent = stats.total_papers || 0;
+            document.getElementById('completed-papers').textContent = stats.completed || 0;
+            
+            const contentReady = papers.filter(p => 
+                p.processing_status === 'completed' && 
+                !p.content_created && 
+                (p.business_relevance_score || 0) >= 7
+            ).length;
+            document.getElementById('content-ready').textContent = contentReady;
+            
+            const avgRelevance = papers
+                .filter(p => p.business_relevance_score)
+                .reduce((sum, p) => sum + p.business_relevance_score, 0) / 
+                papers.filter(p => p.business_relevance_score).length;
+            document.getElementById('avg-relevance').textContent = avgRelevance ? avgRelevance.toFixed(1) : '-';
+        }
+        
+        function updatePapers() {
+            const container = document.getElementById('papers-container');
+            container.className = 'papers-grid';
+            
+            if (papers.length === 0) {
+                container.innerHTML = '<p>No papers found</p>';
+                return;
+            }
+            
+            // Sort papers: content-ready first, then by relevance score
+            const sortedPapers = [...papers].sort((a, b) => {
+                const aReady = a.processing_status === 'completed' && !a.content_created && (a.business_relevance_score || 0) >= 7;
+                const bReady = b.processing_status === 'completed' && !b.content_created && (b.business_relevance_score || 0) >= 7;
+                
+                if (aReady && !bReady) return -1;
+                if (!aReady && bReady) return 1;
+                
+                return (b.business_relevance_score || 0) - (a.business_relevance_score || 0);
+            });
+            
+            container.innerHTML = sortedPapers.map(paper => createPaperCard(paper)).join('');
+        }
+        
+        function createPaperCard(paper) {
+            const isContentReady = paper.processing_status === 'completed' && 
+                                   !paper.content_created && 
+                                   (paper.business_relevance_score || 0) >= 7;
+            
+            const cardClass = isContentReady ? 'content-queue' : 
+                            paper.processing_status === 'processing' ? 'processing' : 'pending';
+            
+            const statusVariant = paper.processing_status === 'completed' ? 'success' :
+                                paper.processing_status === 'processing' ? 'warning' :
+                                paper.processing_status === 'failed' ? 'danger' : 'neutral';
+            
+            return `
+                <sl-card class="paper-card ${cardClass}">
+                    <div class="paper-header">
+                        <div class="paper-title">${paper.title}</div>
+                        ${isContentReady ? '<sl-icon name="star-fill" style="color: var(--sl-color-warning-600);"></sl-icon>' : ''}
+                    </div>
+                    
+                    <div class="paper-meta">
+                        <sl-badge variant="${statusVariant}">${paper.processing_status}</sl-badge>
+                        ${paper.business_relevance_score ? `<sl-badge variant="primary">Relevance: ${paper.business_relevance_score}/10</sl-badge>` : ''}
+                        ${paper.content_created ? '<sl-badge variant="success">Content Created</sl-badge>' : ''}
+                        ${paper.difficulty_level ? `<sl-badge variant="neutral">${paper.difficulty_level}</sl-badge>` : ''}
+                    </div>
+                    
+                    ${paper.main_topics && paper.main_topics.length > 0 ? `
+                        <div style="margin: 0.5rem 0;">
+                            <strong>Topics:</strong> ${paper.main_topics.join(', ')}
+                        </div>
+                    ` : ''}
+                    
+                    ${paper.techniques && paper.techniques.length > 0 ? `
+                        <div style="margin: 0.5rem 0;">
+                            <strong>Techniques:</strong> ${paper.techniques.join(', ')}
+                        </div>
+                    ` : ''}
+                    
+                    <div class="paper-actions">
+                        ${paper.processing_status === 'pending' ? 
+                            `<sl-button size="small" variant="primary" onclick="processPaper(${paper.id})">
+                                <sl-icon name="play" slot="prefix"></sl-icon>
+                                Process
+                            </sl-button>` : ''
+                        }
+                        
+                        ${paper.processing_status === 'completed' && !paper.content_created ? 
+                            `<sl-button size="small" variant="success" onclick="markContentCreated(${paper.id})">
+                                <sl-icon name="check" slot="prefix"></sl-icon>
+                                Mark as Used
+                            </sl-button>` : ''
+                        }
+                        
+                        <sl-button size="small" variant="default" onclick="window.open('${paper.url}', '_blank')">
+                            <sl-icon name="box-arrow-up-right" slot="prefix"></sl-icon>
+                            View Paper
+                        </sl-button>
+                    </div>
+                </sl-card>
+            `;
+        }
+        
+        async function processPaper(paperId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/processing/papers/${paperId}/full`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) throw new Error('Failed to start processing');
+                
+                showSuccess('Processing started');
+                await loadData(); // Refresh data
+            } catch (error) {
+                showError('Failed to process paper: ' + error.message);
+            }
+        }
+        
+        async function processAllPapers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/processing/batch/process?limit=20`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) throw new Error('Failed to start batch processing');
+                
+                const result = await response.json();
+                showSuccess(`Started processing ${result.paper_ids?.length || 0} papers`);
+                await loadData(); // Refresh data
+            } catch (error) {
+                showError('Failed to process papers: ' + error.message);
+            }
+        }
+        
+        async function markContentCreated(paperId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/papers/${paperId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content_created: true
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to update paper');
+                
+                showSuccess('Paper marked as used for content');
+                await loadData(); // Refresh data
+            } catch (error) {
+                showError('Failed to update paper: ' + error.message);
+            }
+        }
+        
+        async function refreshData() {
+            await loadData();
+            showSuccess('Data refreshed');
+        }
+        
+        function showSuccess(message) {
+            const alert = document.createElement('sl-alert');
+            alert.variant = 'success';
+            alert.closable = true;
+            alert.innerHTML = `<sl-icon name="check-circle" slot="icon"></sl-icon>${message}`;
+            document.body.appendChild(alert);
+            alert.show();
+            
+            setTimeout(() => alert.remove(), 5000);
+        }
+        
+        function showError(message) {
+            const alert = document.createElement('sl-alert');
+            alert.variant = 'danger';
+            alert.closable = true;
+            alert.innerHTML = `<sl-icon name="exclamation-triangle" slot="icon"></sl-icon>${message}`;
+            document.body.appendChild(alert);
+            alert.show();
+            
+            setTimeout(() => alert.remove(), 7000);
+        }
+    </script>
+</body>
+</html>

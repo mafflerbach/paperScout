@@ -57,9 +57,6 @@ pdfs/
 test_*.json
 
 # Ignore compiled HTML/JS (optional if build artifacts live in repo)
-*.html
-*.js
-*.map
 
 # Git backup files
 *.orig
