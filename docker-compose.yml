@@ -2,7 +2,7 @@ version: '3.8'
 services:
   # PostgreSQL with pgvector extension
   postgres:
-    image: pgvector/pgvector:pg15
+    image: ankane/pgvector:latest
     container_name: paperscout_db
     environment:
       POSTGRES_DB: paperscout
@@ -34,9 +34,15 @@ services:
     environment:
       - DATABASE_URL=postgresql://scout:secure_password_change_me@postgres:5432/paperscout
       - PDF_STORAGE_PATH=/app/pdfs
+      # All LLM endpoints point to the host Docker instance via host.docker.internal (works reliably on macOS/Windows)
       - LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
-      - LLM_MODEL=llama-3.2-3b-instruct  # Adjust to your LM Studio model name
-      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2  # Or your preferred model
+      - METADATA_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - SUMMARY_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - COMPREHENSIVE_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      # Configure different models for different tasks
+      - METADATA_LLM_MODEL=tinyllama-1.1b-chat-v1.0
+      - SUMMARY_LLM_MODEL=llama-2-7b-chat
+      - COMPREHENSIVE_LLM_MODEL=llama-2-13b-chat
       - PYTHONPATH=/app
       - LOG_LEVEL=INFO
     volumes:
@@ -44,14 +50,14 @@ services:
       - ./pdfs:/app/pdfs:rw  # PDF storage accessible to API
     ports:
       - "8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Paper processing worker (for batch jobs)
   worker:
@@ -65,20 +71,25 @@ services:
     environment:
       - DATABASE_URL=postgresql://scout:secure_password_change_me@postgres:5432/paperscout
       - PDF_STORAGE_PATH=/app/pdfs
+      # LLM endpoints via host.docker.internal
       - LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
-      - LLM_MODEL=local-model
-      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - METADATA_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - SUMMARY_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - COMPREHENSIVE_LLM_ENDPOINT=http://host.docker.internal:1234/v1/chat/completions
+      - METADATA_LLM_MODEL=tinyllama-1.1b-chat
+      - SUMMARY_LLM_MODEL=llama2-7b-chat
+      - COMPREHENSIVE_LLM_MODEL=llama2-13b-chat
       - PYTHONPATH=/app
       - WORKER_MODE=true
     volumes:
-      - ./api/src/app:/app:rw  # This would give you hot-reload
+      - ./api/src/app:/app:rw
       - ./pdfs:/app/pdfs:rw
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: ["python", "-m", "app.worker"]  # Adjust to your worker script
+    command: ["python", "-m", "app.worker"]
     restart: unless-stopped
     profiles:
-      - worker  # Start with --profile worker
+      - worker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Frontend
   frontend:
@@ -103,7 +114,7 @@ services:
     image: dpage/pgadmin4:latest
     container_name: paperscout_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@paperscout.local
+      PGADMIN_DEFAULT_EMAIL: admin@paperscout.dev
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'

@@ -13,6 +13,7 @@ class ProcessingStatus(str, Enum):
 
 class DownloadStatus(str, Enum):
     PENDING = "pending"
+    PROCESSING = "processing"
     DOWNLOADED = "downloaded"
     FAILED = "failed"
 

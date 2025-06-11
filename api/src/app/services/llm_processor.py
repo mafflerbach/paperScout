@@ -1,76 +1,118 @@
 import httpx
 import json
 import logging
+import asyncio
 from typing import Dict, List, Optional, Any
 from functools import lru_cache
+from enum import Enum
+import re
 
 from config import settings
 
 logger = logging.getLogger(__name__)
 
 
+class LLMTask(Enum):
+    METADATA = "metadata"  # Small, fast model for metadata extraction
+    SUMMARY = "summary"    # Medium model for section summaries
+    COMPREHENSIVE = "comprehensive"  # Large model for comprehensive analysis
+
+
+class LLMError(Exception):
+    """Base exception for LLM-related errors"""
+    pass
+
+
+class LLMConnectionError(LLMError):
+    """Raised when connection to LLM fails"""
+    pass
+
+
+class LLMResponseError(LLMError):
+    """Raised when LLM response is invalid"""
+    pass
+
+
 class LLMProcessor:
-    """Service for LLM-based text processing"""
+    """Service for LLM-based text processing with task-specific model selection"""
     
-    def __init__(self, endpoint: str = None, model: str = None):
-        self.endpoint = endpoint or settings.llm_endpoint
-        self.model = model or settings.llm_model
-        self.client = httpx.AsyncClient(timeout=60.0)
-    
-    async def summarize_section(self, content: str, section_type: str) -> str:
-        """Generate summary for a paper section"""
-        try:
-            prompt = self._get_summary_prompt(content, section_type)
-            
-            response = await self._call_llm(prompt, max_tokens=1000)
-            
-            return response.strip()
-            
-        except Exception as e:
-            logger.error(f"Failed to summarize {section_type} section: {e}")
-            # Return truncated content as fallback
-            return content[:500] + "..." if len(content) > 500 else content
-    
-    async def extract_metadata(self, title: str, abstract: str, content_sample: str) -> Dict[str, Any]:
-        try:
-            prompt = self._get_metadata_prompt(title, abstract, content_sample)
-            
-            llm_response = await self._call_llm(prompt, max_tokens=500)  # Use descriptive name
-            
-            # Parse JSON response
+    def __init__(self):
+        # Configure endpoints for different tasks
+        self.endpoints = {
+            LLMTask.METADATA: settings.metadata_llm_endpoint or settings.llm_endpoint,
+            LLMTask.SUMMARY: settings.summary_llm_endpoint or settings.llm_endpoint,
+            LLMTask.COMPREHENSIVE: settings.comprehensive_llm_endpoint or settings.llm_endpoint
+        }
+        
+        # Configure models for different tasks
+        self.models = {
+            LLMTask.METADATA: settings.metadata_llm_model or "tinyllama-1.1b-chat",  # Fast, small model
+            LLMTask.SUMMARY: settings.summary_llm_model or "llama2-7b-chat",         # Medium model
+            LLMTask.COMPREHENSIVE: settings.comprehensive_llm_model or "llama2-13b-chat"  # Large model
+        }
+        
+        # Configure timeouts and retries for different tasks
+        self.timeouts = {
+            LLMTask.METADATA: 10.0,  # Quick metadata tasks
+            LLMTask.SUMMARY: 30.0,   # Medium complexity
+            LLMTask.COMPREHENSIVE: 60.0  # Complex analysis
+        }
+        
+        self.max_retries = {
+            LLMTask.METADATA: 3,
+            LLMTask.SUMMARY: 2,
+            LLMTask.COMPREHENSIVE: 1
+        }
+        
+        # Create separate clients for different timeouts
+        self.clients = {
+            task: httpx.AsyncClient(timeout=timeout)
+            for task, timeout in self.timeouts.items()
+        }
+
+    async def _call_llm_with_retry(self, prompt: str, task: LLMTask, max_tokens: int = 500) -> str:
+        """Make API call to LLM with retry logic and debug logging"""
+        max_retries = self.max_retries[task]
+        retry_delay = 1.0  # Start with 1 second delay
+        
+        # Debug: log prompt (truncated) once before retry loop
+        prompt_snippet = prompt[:300].replace(chr(10), ' ')
+        logger.debug(f"[LLM-{task.value}] Prompt (first 300 chars): {prompt_snippet}...")
+
+        for attempt in range(max_retries):
             try:
-                cleaned_response = llm_response.strip()
-                
-                # Fix incomplete JSON
-                if not cleaned_response.endswith('}'):
-                    cleaned_response += '}'
-                
-                metadata = json.loads(cleaned_response)
-                return self._validate_metadata(metadata)
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM JSON response: {e}")
-                logger.error(f"Response was: {llm_response}")  # Use the correct variable name
-                
-                # Try to fix and parse again
-                try:
-                    fixed_response = llm_response.strip() + '}'
-                    metadata = json.loads(fixed_response)
-                    logger.info("Successfully fixed incomplete JSON")
-                    return self._validate_metadata(metadata)
-                except:
-                    logger.error("Could not fix JSON, using fallback")
-                    return self._get_fallback_metadata(title, abstract)
-                    
-        except Exception as e:
-            logger.error(f"Failed to extract metadata: {e}")
-            return self._get_fallback_metadata(title, abstract)
-    
-    async def _call_llm(self, prompt: str, max_tokens: int = 500) -> str:
-        """Make API call to local LLM"""
+                if attempt > 0:
+                    logger.debug(f"[LLM-{task.value}] Retry attempt {attempt + 1}/{max_retries}")
+                response = await self._call_llm(prompt, task, max_tokens)
+                # Debug: log response (truncated)
+                response_snippet = response[:300].replace(chr(10), ' ')
+                logger.debug(
+                    f"[LLM-{task.value}] Response (first 300 chars): {response_snippet}..."
+                )
+                return response
+            except httpx.HTTPError as e:
+                if attempt == max_retries - 1:
+                    logger.error(
+                        f"[LLM-{task.value}] Call failed after {max_retries} attempts: {e}"
+                    )
+                    raise LLMConnectionError(f"Failed to connect to LLM service: {e}")
+
+                logger.warning(
+                    f"[LLM-{task.value}] Attempt {attempt + 1} failed, retrying in {retry_delay}s: {e}"
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            except Exception as e:
+                logger.error(
+                    f"[LLM-{task.value}] Unexpected error: {e}"
+                )
+                raise LLMError(f"Unexpected error: {e}")
+
+    async def _call_llm(self, prompt: str, task: LLMTask, max_tokens: int = 500) -> str:
+        """Make API call to appropriate LLM based on task"""
         try:
             payload = {
-                "model": self.model,
+                "model": self.models[task],
                 "messages": [
                     {
                         "role": "user",
@@ -82,7 +124,15 @@ class LLMProcessor:
                 "stream": False
             }
             
-            response = await self.client.post(self.endpoint, json=payload)
+            client = self.clients[task]
+            endpoint = self.endpoints[task]
+            
+            # Extra debug information about endpoint and model
+            logger.debug(
+                f"[LLM-{task.value}] POST {endpoint} model={self.models[task]} max_tokens={max_tokens}"
+            )
+
+            response = await client.post(endpoint, json=payload)
             response.raise_for_status()
             
             data = response.json()
@@ -90,12 +140,204 @@ class LLMProcessor:
             if "choices" in data and len(data["choices"]) > 0:
                 return data["choices"][0]["message"]["content"]
             else:
-                raise Exception("Invalid response format from LLM")
+                raise LLMResponseError("Invalid response format from LLM")
                 
-        except Exception as e:
-            logger.error(f"LLM API call failed: {e}")
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error in LLM call for task {task.value}: {e}")
             raise
-    
+        except Exception as e:
+            logger.error(f"Unexpected error in LLM call for task {task.value}: {e}")
+            raise
+
+    async def extract_metadata(self, title: str, abstract: str, content_sample: str) -> Dict[str, Any]:
+        """Extract metadata using fast, small model"""
+        try:
+            # Extract each component separately using the metadata-optimized model
+            main_topics = await self._extract_topics(title, abstract)
+            techniques = await self._extract_techniques(title, abstract, content_sample)
+            applications = await self._extract_applications(title, abstract, content_sample)
+            difficulty_level = await self._assess_difficulty(title, abstract, content_sample)
+            implementation_feasibility = await self._assess_feasibility(title, abstract, content_sample)
+            business_relevance = await self._assess_business_relevance(title, abstract)
+
+            metadata = {
+                "main_topics": main_topics,
+                "techniques": techniques,
+                "applications": applications,
+                "difficulty_level": difficulty_level,
+                "implementation_feasibility": implementation_feasibility,
+                "business_relevance_score": business_relevance
+            }
+
+            return self._validate_metadata(metadata)
+
+        except Exception as e:
+            logger.error(f"Failed to extract metadata: {e}")
+            return self._get_fallback_metadata(title, abstract)
+
+    async def _extract_topics(self, title: str, abstract: str) -> List[str]:
+        """Extract main research topics using small model"""
+        prompt = f"""List 2-4 main research topics/areas, one per line:
+Title: {title}
+Abstract: {abstract}
+Topics:"""
+
+        try:
+            response = await self._call_llm(prompt, task=LLMTask.METADATA, max_tokens=50)
+            topics = [t.strip() for t in response.strip().split('\n') if t.strip()]
+            return topics[:4]
+        except:
+            return ["artificial intelligence"]
+
+    async def _extract_techniques(self, title: str, abstract: str, content_sample: str) -> List[str]:
+        """Extract specific techniques using small model"""
+        prompt = f"""List 2-4 technical methods used, one per line:
+Title: {title}
+Abstract: {abstract}
+Content: {content_sample[:300]}
+Techniques:"""
+
+        try:
+            response = await self._call_llm(prompt, task=LLMTask.METADATA, max_tokens=50)
+            techniques = [t.strip() for t in response.strip().split('\n') if t.strip()]
+            return techniques[:4]
+        except:
+            return []
+
+    async def _extract_applications(self, title: str, abstract: str, content_sample: str) -> List[str]:
+        """Extract applications using small model"""
+        prompt = f"""List 1-3 practical applications, one per line:
+Title: {title}
+Abstract: {abstract}
+Content: {content_sample[:300]}
+Applications:"""
+
+        try:
+            response = await self._call_llm(prompt, task=LLMTask.METADATA, max_tokens=50)
+            applications = [a.strip() for a in response.strip().split('\n') if a.strip()]
+            return applications[:3]
+        except:
+            return []
+
+    async def _assess_difficulty(self, title: str, abstract: str, content_sample: str) -> str:
+        """Assess difficulty using small model"""
+        prompt = f"""Rate complexity, use just one of the three options: beginner, intermediate or advanced. No further reasons or explainations are needed:
+Title: {title}
+Abstract: {abstract}
+Content: {content_sample[:300]}
+Level:"""
+
+        try:
+            response = await self._call_llm(prompt, task=LLMTask.METADATA, max_tokens=20)
+            level = response.strip().lower()
+            return level if level in ["beginner", "intermediate", "advanced"] else "intermediate"
+        except:
+            return "intermediate"
+
+    async def _assess_feasibility(self, title: str, abstract: str, content_sample: str) -> str:
+        """Assess feasibility using small model"""
+        prompt = f"""Rate implementation feasibility (low/medium/high), no further explaination or reason attached, answer with just one of the three Options:
+
+Title: {title}
+Abstract: {abstract}
+Content: {content_sample[:300]}
+Feasibility:"""
+
+        try:
+            response = await self._call_llm(prompt, task=LLMTask.METADATA, max_tokens=20)
+            feasibility = response.strip().lower()
+            return feasibility if feasibility in ["low", "medium", "high"] else "medium"
+        except:
+            return "medium"
+
+    async def _assess_business_relevance(self, title: str, abstract: str) -> int:
+        """Assess business relevance using small model"""
+        prompt = f"""Rate business value just answer with a number between  1 and 10, no further explainations or reason attached:
+Title: {title}
+Abstract: {abstract}
+Score:"""
+
+        try:
+            response = await self._call_llm_with_retry(prompt, task=LLMTask.METADATA, max_tokens=20)
+            # Extract first integer from response
+            match = re.search(r"\d+", response)
+            if match:
+                score = int(match.group())
+                score_clamped = max(1, min(10, score))
+                logger.debug(f"[Metadata] Parsed business relevance score: raw='{response.strip()}' parsed={score_clamped}")
+                return score_clamped
+            else:
+                logger.debug(f"[Metadata] Could not parse integer from LLM response '{response.strip()}', defaulting to 5")
+                return 5
+        except Exception as e:
+            logger.error(f"Failed to assess business relevance: {e}")
+            return 5
+
+    async def summarize_section(self, content: str, section_type: str) -> str:
+        """Generate summary using medium-sized model with improved error handling"""
+        try:
+            prompt = self._get_summary_prompt(content, section_type)
+            return await self._call_llm_with_retry(prompt, task=LLMTask.SUMMARY, max_tokens=1000)
+        except LLMConnectionError:
+            logger.warning(f"LLM connection failed for {section_type} summary, using fallback")
+            return self._generate_fallback_summary(content)
+        except Exception as e:
+            logger.error(f"Failed to summarize {section_type} section: {e}")
+            return self._generate_fallback_summary(content)
+
+    def _generate_fallback_summary(self, content: str, max_length: int = 500) -> str:
+        """Generate a simple fallback summary when LLM is unavailable"""
+        if len(content) <= max_length:
+            return content
+        
+        # Split into sentences (simple approach)
+        sentences = content.split('. ')
+        summary = []
+        current_length = 0
+        
+        for sentence in sentences:
+            if current_length + len(sentence) > max_length:
+                break
+            summary.append(sentence)
+            current_length += len(sentence) + 2  # +2 for '. '
+        
+        return '. '.join(summary) + ('...' if sentences else '')
+
+    async def generate_comprehensive_summary(
+        self,
+        title: str,
+        abstract: Optional[str],
+        section_summaries: List[Dict[str, str]],
+        style: Optional[str] = None
+    ) -> str:
+        """Generate comprehensive summary using large model"""
+        try:
+            sections_text = "\n\n".join([
+                f"{s['type'].upper()}:\n{s['summary']}"
+                for s in section_summaries
+            ])
+            
+            prompt = self._get_comprehensive_prompt(title, abstract, sections_text, style)
+            
+            response = await self._call_llm(
+                prompt,
+                task=LLMTask.COMPREHENSIVE,
+                max_tokens=2000
+            )
+            return response.strip()
+            
+        except Exception as e:
+            logger.error(f"Failed to generate comprehensive summary: {e}")
+            return "\n\n".join([
+                f"{s['type'].upper()}:\n{s['summary']}"
+                for s in section_summaries
+            ])
+
+    async def close(self):
+        """Close all HTTP clients"""
+        for client in self.clients.values():
+            await client.aclose()
+
     def _get_summary_prompt(self, content: str, section_type: str) -> str:
         """Generate prompt for section summarization"""
         section_guidance = {
@@ -224,56 +466,6 @@ JSON:"""
             "implementation_feasibility": "medium",
             "business_relevance_score": 5
         }
-    
-    async def close(self):
-        """Close the HTTP client"""
-        await self.client.aclose()
-
-    async def generate_comprehensive_summary(
-        self,
-        title: str,
-        abstract: Optional[str],
-        section_summaries: List[Dict[str, str]]
-    ) -> str:
-        """Generate a comprehensive summary from all section summaries"""
-        try:
-            # Prepare the context
-            sections_text = "\n\n".join([
-                f"{s['type'].upper()}:\n{s['summary']}"
-                for s in section_summaries
-            ])
-            
-            prompt = f"""Please provide a comprehensive summary of this research paper based on its section summaries.
-The summary should be well-structured, cohesive, and highlight the key contributions and findings.
-
-Title: {title}
-
-Abstract:
-{abstract or 'Not available'}
-
-Section Summaries:
-{sections_text}
-
-Please synthesize a comprehensive summary that:
-1. Introduces the paper's main objective and motivation
-2. Describes the key methodological approach
-3. Highlights the most significant findings and results
-4. Concludes with the paper's main contributions and implications
-
-Keep the summary clear, concise, and focused on the most important aspects that would help a reader understand the paper's significance.
-
-Comprehensive Summary:"""
-
-            response = await self._call_llm(prompt, max_tokens=1000)
-            return response.strip()
-            
-        except Exception as e:
-            logger.error(f"Failed to generate comprehensive summary: {e}")
-            # Fallback to concatenating summaries with headers
-            return "\n\n".join([
-                f"{s['type'].upper()}:\n{s['summary']}"
-                for s in section_summaries
-            ])
 
 
 # Global service instance

@@ -68,7 +68,7 @@ class LLMProcessor:
                     }
                 ],
                 "max_tokens": max_tokens,
-                "temperature": 0.3,
+                "temperature": 0.0,
                 "stream": False
             }
             
@@ -113,7 +113,7 @@ Summary:"""
     
     def _get_metadata_prompt(self, title: str, abstract: str, content_sample: str) -> str:
         """Generate prompt for metadata extraction"""
-        return f"""Analyze this research paper and extract structured metadata. Respond ONLY with valid JSON.
+        return f"""Analyze this research paper and extract structured metadata. Respond ONLY with valid JSON with no further additions, explainations or reasons.
 
 Paper Title: {title}
 

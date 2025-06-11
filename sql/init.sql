@@ -1,6 +1,4 @@
-CREATE INDEX idx_content_posts_paper_id ON content_posts(paper_id);
-CREATE INDEX idx_content_posts_platform ON content_posts(platform);
-CREATE INDEX idx_content_posts_status ON content_posts(status);-- Enable pgvector extension
+-- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Papers table - main paper metadata
@@ -16,8 +14,12 @@ CREATE TABLE papers (
     categories TEXT[],
     
     -- Processing status
-    download_status VARCHAR(20) DEFAULT 'pending', -- pending, downloaded, failed
-    processing_status VARCHAR(20) DEFAULT 'pending', -- pending, processing, completed, failed
+    download_status VARCHAR(20) DEFAULT 'pending' CHECK (
+        download_status IN ('pending', 'processing', 'downloaded', 'failed')
+    ),
+    processing_status VARCHAR(20) DEFAULT 'pending' CHECK (
+        processing_status IN ('pending', 'processing', 'completed', 'failed')
+    ),
     
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -37,7 +39,15 @@ CREATE TABLE papers (
     
     -- Content creation tracking
     content_created BOOLEAN DEFAULT FALSE,
-    content_note_path TEXT -- Path to Obsidian note/markdown file
+    content_note_path TEXT, -- Path to Obsidian note/markdown file
+    
+    -- Comprehensive summaries
+    comprehensive_summary TEXT,
+    comprehensive_summary_academic TEXT,
+    comprehensive_summary_business TEXT,
+    comprehensive_summary_social TEXT,
+    comprehensive_summary_educational TEXT,
+    comprehensive_summary_updated_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Paper sections - split content with summaries
@@ -107,10 +117,6 @@ CREATE INDEX idx_paper_sections_refinement_status ON paper_sections(refinement_s
 
 CREATE INDEX idx_tags_name ON tags(name);
 CREATE INDEX idx_tags_category ON tags(category);
-
-CREATE INDEX idx_content_posts_paper_id ON content_posts(paper_id);
-CREATE INDEX idx_content_posts_platform ON content_posts(platform);
-CREATE INDEX idx_content_posts_status ON content_posts(status);
 
 -- Update timestamp trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()

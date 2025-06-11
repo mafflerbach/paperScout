@@ -321,10 +321,18 @@ async def process_paper_task(paper_id: int):
             # Generate summaries for each section
             section_summaries = []
             for i, section in enumerate(sections):
+                logger.debug(
+                    f"[Process] Paper {paper_id} - summarizing section {i} ({section['type']})"
+                )
+
                 summary = await llm_processor.summarize_section(
                     section["content"], 
                     section["type"]
                 )
+                logger.debug(
+                    f"[Process] Paper {paper_id} - section {i} summary (first 200 chars): {summary[:200].replace(chr(10), ' ')}..."
+                )
+
                 section_summaries.append({
                     **section,
                     "summary": summary,
@@ -332,11 +340,13 @@ async def process_paper_task(paper_id: int):
                 })
             
             # Generate paper metadata using LLM
+            logger.debug(f"[Process] Paper {paper_id} - extracting metadata via LLM")
             metadata = await llm_processor.extract_metadata(
                 paper.title, 
                 paper.abstract or "", 
                 text_content[:5000]  # First 5k chars for context
             )
+            logger.debug(f"[Process] Paper {paper_id} - metadata: {metadata}")
             
             # Generate embeddings for sections
             section_contents = [s["summary"] or s["content"][:1000] for s in section_summaries]
@@ -630,8 +640,9 @@ Refined summary:"""
         
         llm_processor = get_llm_processor()
         prompt = REFINEMENT_PROMPTS[style].format(summary=original_summary)
-        
-        refined = await llm_processor._call_llm(prompt, max_tokens=300)
+        logger.error(f"Prompt: {prompt}") 
+        refined = await llm_processor._call_llm(prompt, max_tokens=2000)
+        logger.error(f"Refined summary: {refined}") 
         return refined.strip()
         
     except Exception as e:

@@ -217,6 +217,7 @@ async def get_unused_papers(
 async def get_comprehensive_summary(
     paper_id: int,
     style: Optional[str] = None,
+    force: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """Get a comprehensive summary combining all section summaries"""
@@ -231,24 +232,25 @@ async def get_comprehensive_summary(
         )
     
     # Check if we already have a cached summary for this style
-    if style:
-        summary_column = f"comprehensive_summary_{style}"
-        if hasattr(paper, summary_column) and getattr(paper, summary_column):
+    if not force:  # Only check cache if not forcing regeneration
+        if style:
+            summary_column = f"comprehensive_summary_{style}"
+            if hasattr(paper, summary_column) and getattr(paper, summary_column):
+                return {
+                    "paper_id": paper_id,
+                    "title": paper.title,
+                    "comprehensive_summary": getattr(paper, summary_column),
+                    "style": style,
+                    "cached": True
+                }
+        elif paper.comprehensive_summary:
             return {
                 "paper_id": paper_id,
                 "title": paper.title,
-                "comprehensive_summary": getattr(paper, summary_column),
-                "style": style,
+                "comprehensive_summary": paper.comprehensive_summary,
+                "style": "default",
                 "cached": True
             }
-    elif paper.comprehensive_summary:
-        return {
-            "paper_id": paper_id,
-            "title": paper.title,
-            "comprehensive_summary": paper.comprehensive_summary,
-            "style": "default",
-            "cached": True
-        }
     
     # Get paper sections
     sections_result = await db.execute(
@@ -304,7 +306,8 @@ async def get_comprehensive_summary(
     comprehensive_summary = await llm_processor.generate_comprehensive_summary(
         paper.title,
         paper.abstract,
-        section_summaries
+        section_summaries,
+        style=style
     )
     
     # Save the summary in the database

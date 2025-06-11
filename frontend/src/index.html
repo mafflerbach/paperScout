@@ -1133,7 +1133,15 @@
                     </div>
                 `;
                 
-                const url = `${API_BASE}/api/papers/${paperId}/comprehensive-summary${style !== 'default' ? `?style=${style}` : ''}${forceRegenerate ? '&force=true' : ''}`;
+                // Build URL with parameters
+                let url = new URL(`${API_BASE}/api/papers/${paperId}/comprehensive-summary`);
+                if (style !== 'default') {
+                    url.searchParams.append('style', style);
+                }
+                if (forceRegenerate) {
+                    url.searchParams.append('force', 'true');
+                }
+                
                 const response = await fetch(url);
                 
                 if (!response.ok) throw new Error('Failed to fetch comprehensive summary');
